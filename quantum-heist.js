@@ -1101,34 +1101,62 @@ function printSolutionWorstOnly(result, totalGems = 0, puzzleName = 'puzzle') {
   printCentered('');
 }
 
-function showDemoMenu(rl, callback) {
+function showDemoMenu(rl, callback, isStandalone = false) {
   const boxWidth = 50;
   const border = '+' + '='.repeat(boxWidth - 2) + '+';
 
-  printCentered('');
-  printCentered(border);
-  printCentered('|' + 'SELECT PATH TYPE'.padStart(Math.floor((boxWidth - 2 + 16) / 2)).padEnd(boxWidth - 2) + '|');
-  printCentered(border);
-  printCentered('|' + '  [1] Best Path (Fastest)'.padEnd(boxWidth - 2) + '|');
-  printCentered('|' + '  [2] Worst Path (Slowest)'.padEnd(boxWidth - 2) + '|');
-  printCentered('|' + '  [3] Both Paths'.padEnd(boxWidth - 2) + '|');
-  printCentered(border);
-
-  rl.question('\nSelect option (1-3): ', (answer) => {
-    switch (answer.trim()) {
-      case '1':
-        interactiveDemo('best');
-        break;
-      case '2':
-        interactiveDemo('worst');
-        break;
-      case '3':
-      default:
-        interactiveDemo('both');
-        break;
+  function showMenu() {
+    printCentered('');
+    printCentered(border);
+    printCentered('|' + 'SELECT PATH TYPE'.padStart(Math.floor((boxWidth - 2 + 16) / 2)).padEnd(boxWidth - 2) + '|');
+    printCentered(border);
+    printCentered('|' + '  [1] Best Path (Fastest)'.padEnd(boxWidth - 2) + '|');
+    printCentered('|' + '  [2] Worst Path (Slowest)'.padEnd(boxWidth - 2) + '|');
+    printCentered('|' + '  [3] Both Paths'.padEnd(boxWidth - 2) + '|');
+    printCentered('|' + '  [4] Back to Main Menu'.padEnd(boxWidth - 2) + '|');
+    if (isStandalone) {
+      printCentered('|' + '  [5] Exit'.padEnd(boxWidth - 2) + '|');
     }
-    callback();
-  });
+    printCentered(border);
+
+    const maxOption = isStandalone ? '5' : '4';
+    rl.question(`\nSelect option (1-${maxOption}): `, (answer) => {
+      switch (answer.trim()) {
+        case '1':
+          interactiveDemo('best');
+          showMenu();
+          break;
+        case '2':
+          interactiveDemo('worst');
+          showMenu();
+          break;
+        case '3':
+          interactiveDemo('both');
+          showMenu();
+          break;
+        case '4':
+          callback();
+          break;
+        case '5':
+          if (isStandalone) {
+            printCentered('');
+            printCentered('Goodbye!');
+            printCentered('');
+            rl.close();
+            process.exit(0);
+          } else {
+            callback();
+          }
+          break;
+        default:
+          printCentered('Invalid option.');
+          showMenu();
+          break;
+      }
+    });
+  }
+
+  showMenu();
 }
 
 function runSingleTest(rl, callback) {
@@ -1301,9 +1329,14 @@ if (require.main === module) {
     } else if (args.includes('both')) {
       interactiveDemo('both');
     } else {
-      // Show selection menu
+      // Show selection menu with exit option
       const rl = createReadlineInterface();
-      showDemoMenu(rl, () => rl.close());
+      showDemoMenu(rl, () => {
+        printCentered('');
+        printCentered('Goodbye!');
+        printCentered('');
+        rl.close();
+      }, true);
     }
   } else if (args.includes('--help') || args.includes('-h')) {
     printCentered('');
