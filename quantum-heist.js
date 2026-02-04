@@ -488,17 +488,18 @@ function visualizeMuseum(grid) {
 /**
  * Logs the path to a file
  */
-function logPathToFile(result, puzzleName = 'puzzle') {
+function logPathToFile(result, puzzleName = 'puzzle', pathType = 'best') {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const logFileName = `path_${timestamp}.log`;
+  const logFileName = `path_${pathType}_${timestamp}.log`;
 
-  let logContent = `Challenge 2 - Path Log\n`;
+  let logContent = `Challenge 2 - ${pathType.toUpperCase()} Path Log\n`;
   logContent += `======================\n`;
   logContent += `Puzzle: ${puzzleName}\n`;
+  logContent += `Path Type: ${pathType.toUpperCase()}\n`;
   logContent += `Timestamp: ${new Date().toISOString()}\n`;
   logContent += `Time: ${result.time}\n`;
   logContent += `Status: ${result.time !== -1 ? 'SUCCESS' : 'FAILED'}\n`;
-  logContent += `States Explored: ${result.iterations}\n`;
+  logContent += `States Explored: ${result.iterations || 'N/A'}\n`;
   logContent += `======================\n\n`;
 
   if (result.path && result.path.length > 0) {
@@ -516,27 +517,181 @@ function logPathToFile(result, puzzleName = 'puzzle') {
 }
 
 /**
+ * Finds the WORST (longest) path using modified search
+ */
+function solveWorstPath(grid) {
+  const museum = parseMuseum(grid);
+
+  if (!museum.start || !museum.exit) {
+    return { time: -1, path: [], message: "Missing start or exit!" };
+  }
+
+  const totalGems = museum.gems.length;
+  const allGemsCollected = (1 << totalGems) - 1;
+
+  const directions = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+  const dirNames = ['UP', 'DOWN', 'LEFT', 'RIGHT'];
+
+  // Use BFS but track MAXIMUM time to each state
+  const visited = new Map();
+  const parent = new Map();
+  const queue = [];
+
+  const initialState = new State(
+    museum.start.r, museum.start.c, 0,
+    0, 0, 0, false
+  );
+
+  queue.push(initialState);
+  visited.set(initialState.hash(), 0);
+
+  const getGemIndex = (r, c) => museum.gems.findIndex(g => g.r === r && g.c === c);
+  const getKeyIndex = (r, c) => museum.keys.findIndex(k => k.r === r && k.c === c);
+  const getDoorIndex = (r, c) => museum.doors.findIndex(d => d.r === r && d.c === c);
+  const isLaserActive = (r, c, time) => {
+    const isLaser = museum.lasers.some(l => l.r === r && l.c === c);
+    return isLaser && time % 3 === 0;
+  };
+  const hasTimeRift = (r, c) => museum.timeRifts.some(t => t.r === r && t.c === c);
+  const getPortalPairIndex = (r, c) => {
+    let idx = 0;
+    for (const [key, _] of museum.portals) {
+      const [pr, pc] = key.split(',').map(Number);
+      if (pr === r && pc === c) return Math.floor(idx / 2);
+      idx++;
+    }
+    return -1;
+  };
+  const isValidMove = (r, c, keyMask) => {
+    if (r < 0 || r >= museum.rows || c < 0 || c >= museum.cols) return false;
+    if (museum.grid[r][c] === '#') return false;
+    const doorIdx = getDoorIndex(r, c);
+    if (doorIdx !== -1 && !(keyMask & (1 << doorIdx))) return false;
+    return true;
+  };
+
+  let worstSolution = null;
+  let iterations = 0;
+  const maxIterations = 500000;
+  const maxTime = 200; // Cap to prevent infinite exploration
+
+  while (queue.length > 0 && iterations < maxIterations) {
+    iterations++;
+    const current = queue.shift();
+
+    if (current.time > maxTime) continue;
+
+    // Check win condition
+    if (current.r === museum.exit.r &&
+        current.c === museum.exit.c &&
+        current.gemMask === allGemsCollected) {
+      if (!worstSolution || current.time > worstSolution.time) {
+        const path = reconstructPath(parent, current.hash(), initialState.hash());
+        worstSolution = {
+          time: current.time,
+          path: path,
+          iterations: iterations
+        };
+      }
+      continue;
+    }
+
+    // Generate next states - explore all valid moves
+    for (let d = 0; d < 4; d++) {
+      const [dr, dc] = directions[d];
+      const nr = current.r + dr;
+      const nc = current.c + dc;
+      const newTime = current.time + 1;
+
+      if (!isValidMove(nr, nc, current.keyMask)) continue;
+      if (isLaserActive(nr, nc, newTime)) continue;
+
+      let newGemMask = current.gemMask;
+      let newKeyMask = current.keyMask;
+
+      const gemIdx = getGemIndex(nr, nc);
+      if (gemIdx !== -1) newGemMask |= (1 << gemIdx);
+      const keyIdx = getKeyIndex(nr, nc);
+      if (keyIdx !== -1) newKeyMask |= (1 << keyIdx);
+
+      const newState = new State(nr, nc, newTime, newGemMask, newKeyMask, current.portalMask, current.riftUsed);
+      const newHash = newState.hash();
+      const currentHash = current.hash();
+
+      // For worst path: visit if we haven't been here OR if this path takes LONGER
+      if (!visited.has(newHash) || visited.get(newHash) < newTime) {
+        visited.set(newHash, newTime);
+        queue.push(newState);
+        parent.set(newHash, { prevHash: currentHash, action: `Move ${dirNames[d]} to (${nr},${nc})` });
+      }
+    }
+
+    // Portal
+    const portalKey = `${current.r},${current.c}`;
+    if (museum.portals.has(portalKey)) {
+      const portalIdx = getPortalPairIndex(current.r, current.c);
+      if (portalIdx !== -1 && !(current.portalMask & (1 << portalIdx))) {
+        const dest = museum.portals.get(portalKey);
+        const newPortalMask = current.portalMask | (1 << portalIdx);
+        const newState = new State(dest.r, dest.c, current.time, current.gemMask, current.keyMask, newPortalMask, current.riftUsed);
+
+        const gemIdx = getGemIndex(dest.r, dest.c);
+        if (gemIdx !== -1) newState.gemMask |= (1 << gemIdx);
+        const keyIdx = getKeyIndex(dest.r, dest.c);
+        if (keyIdx !== -1) newState.keyMask |= (1 << keyIdx);
+
+        const newHash = newState.hash();
+        if (!visited.has(newHash) || visited.get(newHash) < current.time) {
+          visited.set(newHash, current.time);
+          queue.push(newState);
+          parent.set(newHash, { prevHash: current.hash(), action: `PORTAL to (${dest.r},${dest.c})` });
+        }
+      }
+    }
+  }
+
+  if (worstSolution) {
+    worstSolution.message = `Worst path: ${worstSolution.time} time units.`;
+    return worstSolution;
+  }
+
+  return { time: -1, path: [], iterations, message: "No path found." };
+}
+
+/**
  * Prints solution details (centered)
  */
-function printSolution(result, totalGems = 0, puzzleName = 'puzzle') {
-  const boxWidth = 44;
+function printSolution(result, totalGems = 0, puzzleName = 'puzzle', worstResult = null) {
+  const boxWidth = 50;
   const border = '+' + '='.repeat(boxWidth - 2) + '+';
 
-  // Log path to file
-  let logFile = null;
+  // Log best path to file
+  let bestLogFile = null;
   if (result.path && result.path.length > 0) {
-    logFile = logPathToFile(result, puzzleName);
+    bestLogFile = logPathToFile(result, puzzleName, 'best');
+  }
+
+  // Log worst path to file
+  let worstLogFile = null;
+  if (worstResult && worstResult.path && worstResult.path.length > 0) {
+    worstLogFile = logPathToFile(worstResult, puzzleName, 'worst');
   }
 
   printCentered(border);
   if (result.time !== -1) {
-    printCentered('|' + `  Time: ${result.time}`.padEnd(boxWidth - 2) + '|');
+    printCentered('|' + `  Best Time: ${result.time}`.padEnd(boxWidth - 2) + '|');
+    if (worstResult && worstResult.time !== -1) {
+      printCentered('|' + `  Worst Time: ${worstResult.time}`.padEnd(boxWidth - 2) + '|');
+    }
     if (totalGems > 0) {
       printCentered('|' + `  Gems: ${totalGems}/${totalGems} collected`.padEnd(boxWidth - 2) + '|');
     }
     printCentered('|' + '  Status: SUCCESS'.padEnd(boxWidth - 2) + '|');
-    if (logFile) {
-      printCentered('|' + `  Path logged: ${logFile}`.padEnd(boxWidth - 2).substring(0, boxWidth - 2) + '|');
+    if (bestLogFile) {
+      printCentered('|' + `  Best path: ${bestLogFile}`.padEnd(boxWidth - 2).substring(0, boxWidth - 2) + '|');
+    }
+    if (worstLogFile) {
+      printCentered('|' + `  Worst path: ${worstLogFile}`.padEnd(boxWidth - 2).substring(0, boxWidth - 2) + '|');
     }
   } else {
     printCentered('|' + '  Status: FAILED'.padEnd(boxWidth - 2) + '|');
@@ -845,7 +1000,7 @@ function showGameRules() {
   printCentered(border);
 }
 
-function interactiveDemo() {
+function interactiveDemo(pathChoice = null) {
   const boxWidth = 75;
   const border = '+' + '='.repeat(boxWidth - 2) + '+';
 
@@ -875,16 +1030,105 @@ function interactiveDemo() {
   printCentered('');
   visualizeMuseum(customPuzzle);
 
-  printCentered('Solving...');
+  // Show grid size
+  const gridRows = customPuzzle.length;
+  const gridCols = customPuzzle[0].length;
+  printCentered(`Grid Size: ${gridRows} x ${gridCols}`);
   printCentered('');
-  const startTime = performance.now();
-  const result = solveQuantumHeist(customPuzzle);
-  const endTime = performance.now();
 
   // Count gems in puzzle
   const gemCount = (customPuzzle.join('').match(/G/g) || []).length;
-  printSolution(result, gemCount, 'demo');
-  printCentered(`Execution time: ${(endTime - startTime).toFixed(2)}ms`);
+
+  if (pathChoice === 'best') {
+    printCentered('Solving best path...');
+    const startTime = performance.now();
+    const result = solveQuantumHeist(customPuzzle);
+    const endTime = performance.now();
+    printCentered('');
+    printSolution(result, gemCount, 'demo', null);
+    printCentered(`Execution time: ${(endTime - startTime).toFixed(2)}ms`);
+  } else if (pathChoice === 'worst') {
+    printCentered('Solving worst path...');
+    const startTime = performance.now();
+    const worstResult = solveWorstPath(customPuzzle);
+    const endTime = performance.now();
+    printCentered('');
+    printSolutionWorstOnly(worstResult, gemCount, 'demo');
+    printCentered(`Execution time: ${(endTime - startTime).toFixed(2)}ms`);
+  } else {
+    printCentered('Solving best path...');
+    const startTime = performance.now();
+    const result = solveQuantumHeist(customPuzzle);
+    const bestTime = performance.now();
+
+    printCentered('Solving worst path...');
+    const worstResult = solveWorstPath(customPuzzle);
+    const endTime = performance.now();
+
+    printCentered('');
+    printSolution(result, gemCount, 'demo', worstResult);
+    printCentered(`Best path time: ${(bestTime - startTime).toFixed(2)}ms`);
+    printCentered(`Worst path time: ${(endTime - bestTime).toFixed(2)}ms`);
+  }
+}
+
+/**
+ * Prints worst path solution only (centered)
+ */
+function printSolutionWorstOnly(result, totalGems = 0, puzzleName = 'puzzle') {
+  const boxWidth = 50;
+  const border = '+' + '='.repeat(boxWidth - 2) + '+';
+
+  let logFile = null;
+  if (result.path && result.path.length > 0) {
+    logFile = logPathToFile(result, puzzleName, 'worst');
+  }
+
+  printCentered(border);
+  if (result.time !== -1) {
+    printCentered('|' + `  Worst Time: ${result.time}`.padEnd(boxWidth - 2) + '|');
+    if (totalGems > 0) {
+      printCentered('|' + `  Gems: ${totalGems}/${totalGems} collected`.padEnd(boxWidth - 2) + '|');
+    }
+    printCentered('|' + '  Status: SUCCESS'.padEnd(boxWidth - 2) + '|');
+    if (logFile) {
+      printCentered('|' + `  Path logged: ${logFile}`.padEnd(boxWidth - 2).substring(0, boxWidth - 2) + '|');
+    }
+  } else {
+    printCentered('|' + '  Status: FAILED'.padEnd(boxWidth - 2) + '|');
+  }
+  printCentered(border);
+  printCentered('');
+}
+
+function showDemoMenu(rl, callback) {
+  const boxWidth = 50;
+  const border = '+' + '='.repeat(boxWidth - 2) + '+';
+
+  printCentered('');
+  printCentered(border);
+  printCentered('|' + 'SELECT PATH TYPE'.padStart(Math.floor((boxWidth - 2 + 16) / 2)).padEnd(boxWidth - 2) + '|');
+  printCentered(border);
+  printCentered('|' + '  [1] Best Path (Fastest)'.padEnd(boxWidth - 2) + '|');
+  printCentered('|' + '  [2] Worst Path (Slowest)'.padEnd(boxWidth - 2) + '|');
+  printCentered('|' + '  [3] Both Paths'.padEnd(boxWidth - 2) + '|');
+  printCentered(border);
+
+  rl.question('\nSelect option (1-3): ', (answer) => {
+    switch (answer.trim()) {
+      case '1':
+        interactiveDemo('best');
+        break;
+      case '2':
+        interactiveDemo('worst');
+        break;
+      case '3':
+      default:
+        interactiveDemo('both');
+        break;
+    }
+    callback();
+  });
 }
 
 function runSingleTest(rl, callback) {
@@ -995,8 +1239,7 @@ function startInteractiveMode() {
           runSingleTest(rl, mainLoop);
           break;
         case '3':
-          interactiveDemo();
-          mainLoop();
+          showDemoMenu(rl, mainLoop);
           break;
         case '4':
           createCustomPuzzle(rl, mainLoop);
@@ -1051,15 +1294,28 @@ if (require.main === module) {
     runTests();
   } else if (args.includes('--demo') || args.includes('-d')) {
     // Run demo directly
-    interactiveDemo();
+    if (args.includes('best')) {
+      interactiveDemo('best');
+    } else if (args.includes('worst')) {
+      interactiveDemo('worst');
+    } else if (args.includes('both')) {
+      interactiveDemo('both');
+    } else {
+      // Show selection menu
+      const rl = createReadlineInterface();
+      showDemoMenu(rl, () => rl.close());
+    }
   } else if (args.includes('--help') || args.includes('-h')) {
     printCentered('');
     printCentered('Challenge 2 - Usage:');
     printCentered('');
-    printCentered('  node quantum-heist.js           Start interactive mode');
-    printCentered('  node quantum-heist.js --test    Run all tests');
-    printCentered('  node quantum-heist.js --demo    Run demo puzzle');
-    printCentered('  node quantum-heist.js --help    Show this help');
+    printCentered('  node quantum-heist.js              Start interactive mode');
+    printCentered('  node quantum-heist.js --test       Run all tests');
+    printCentered('  node quantum-heist.js --demo       Run demo (select path type)');
+    printCentered('  node quantum-heist.js --demo best  Run demo (best path only)');
+    printCentered('  node quantum-heist.js --demo worst Run demo (worst path only)');
+    printCentered('  node quantum-heist.js --demo both  Run demo (both paths)');
+    printCentered('  node quantum-heist.js --help       Show this help');
     printCentered('');
   } else {
     // Start interactive mode by default
