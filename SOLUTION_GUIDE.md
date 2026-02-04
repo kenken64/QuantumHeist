@@ -624,6 +624,97 @@ FUNCTION SolveChallenge2(grid):
 
 ---
 
+## Appendix C: Simple Explanation (For Non-Technical Readers)
+
+### The Problem in Plain English
+
+Imagine you're a thief in a museum. Your goal is to:
+1. **Collect all the diamonds** scattered around the museum
+2. **Reach the exit door**
+3. **Do it as fast as possible**
+
+But the museum has obstacles:
+- **Walls** you cannot walk through
+- **Locked doors** that need specific keys
+- **Laser beams** that turn on and off every few seconds
+- **Magic portals** that teleport you instantly
+- **A time machine** that can rewind time by 2 seconds (but only works once)
+
+### How the Solution Works (Like a Game Strategy)
+
+Think of it like playing a board game:
+
+**Step 1: Make a To-Do List**
+- Write down your starting position
+- Put it in a special bag called "places to check"
+
+**Step 2: Always Pick the Fastest Option**
+- Look in your bag and pick the position that took the least time to reach
+- This is like always choosing the shortest queue at a store
+
+**Step 3: Check if You've Won**
+- Are you at the exit?
+- Do you have all the diamonds?
+- If yes, you're done! That's your fastest time.
+
+**Step 4: Look Around**
+- From where you are, look at all places you can go:
+  - Up, down, left, right (takes 1 second each)
+  - Through a portal (instant, but can only use each portal once)
+  - Use the time machine (goes back 2 seconds, one-time use)
+
+**Step 5: Remember Where You've Been**
+- Keep a notebook of everywhere you've visited
+- Write down the fastest time you reached each place
+- If you find a faster way to the same place, update your notes
+
+**Step 6: Repeat**
+- Keep doing steps 2-5 until you find the exit with all diamonds
+- Or until you've checked everywhere and it's impossible
+
+### Why This Method Works
+
+**The "Fastest First" Rule:**
+Imagine you're filling a bathtub. Water always flows to the lowest point first. Similarly, our method always explores the quickest paths first. So when we finally reach the exit, we know it's the fastest possible way.
+
+**The "Remember Everything" Rule:**
+We keep track of every situation we've been in. A "situation" includes:
+- Where you are
+- What diamonds you have
+- What keys you have
+- Which portals you've used
+- Whether you've used the time machine
+
+This prevents us from doing the same thing twice and wasting time.
+
+### A Simple Example
+
+```
+Start → . → . → Diamond
+  ↓
+  . → . → Exit
+```
+
+The solver would:
+1. Start at "Start" (time = 0)
+2. Try going right to first dot (time = 1)
+3. Try going down to second dot (time = 1)
+4. Keep exploring, always picking the fastest option
+5. Eventually find: Start → right → right → right (get diamond) → down → down → left → left (reach exit)
+6. Report: "Found exit in 7 seconds with all diamonds!"
+
+### Real-World Analogy
+
+It's like using Google Maps:
+- Google doesn't check every possible route
+- It smartly explores promising routes first
+- It remembers roads it has already considered
+- It finds the fastest path without wasting time on slow routes
+
+Our puzzle solver does the same thing, but for a museum maze with diamonds and obstacles!
+
+---
+
 ## References
 
 1. Dijkstra, E. W. (1959). "A note on two problems in connexion with graphs"

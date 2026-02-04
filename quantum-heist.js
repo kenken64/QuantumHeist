@@ -486,11 +486,47 @@ function visualizeMuseum(grid) {
 }
 
 /**
+ * Logs the path to a file
+ */
+function logPathToFile(result, puzzleName = 'puzzle') {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const logFileName = `path_${timestamp}.log`;
+
+  let logContent = `Challenge 2 - Path Log\n`;
+  logContent += `======================\n`;
+  logContent += `Puzzle: ${puzzleName}\n`;
+  logContent += `Timestamp: ${new Date().toISOString()}\n`;
+  logContent += `Time: ${result.time}\n`;
+  logContent += `Status: ${result.time !== -1 ? 'SUCCESS' : 'FAILED'}\n`;
+  logContent += `States Explored: ${result.iterations}\n`;
+  logContent += `======================\n\n`;
+
+  if (result.path && result.path.length > 0) {
+    logContent += `PATH (${result.path.length} steps):\n`;
+    logContent += `-----------------------\n`;
+    result.path.forEach((step, idx) => {
+      logContent += `${(idx + 1).toString().padStart(3, '0')}. ${step}\n`;
+    });
+  } else {
+    logContent += `No path found.\n`;
+  }
+
+  fs.writeFileSync(logFileName, logContent);
+  return logFileName;
+}
+
+/**
  * Prints solution details (centered)
  */
-function printSolution(result, totalGems = 0) {
+function printSolution(result, totalGems = 0, puzzleName = 'puzzle') {
   const boxWidth = 44;
   const border = '+' + '='.repeat(boxWidth - 2) + '+';
+
+  // Log path to file
+  let logFile = null;
+  if (result.path && result.path.length > 0) {
+    logFile = logPathToFile(result, puzzleName);
+  }
 
   printCentered(border);
   if (result.time !== -1) {
@@ -499,6 +535,9 @@ function printSolution(result, totalGems = 0) {
       printCentered('|' + `  Gems: ${totalGems}/${totalGems} collected`.padEnd(boxWidth - 2) + '|');
     }
     printCentered('|' + '  Status: SUCCESS'.padEnd(boxWidth - 2) + '|');
+    if (logFile) {
+      printCentered('|' + `  Path logged: ${logFile}`.padEnd(boxWidth - 2).substring(0, boxWidth - 2) + '|');
+    }
   } else {
     printCentered('|' + '  Status: FAILED'.padEnd(boxWidth - 2) + '|');
   }
@@ -661,7 +700,7 @@ function runTests() {
     const endTime = performance.now();
 
     const gemCount = (testCase.grid.join('').match(/G/g) || []).length;
-    printSolution(result, gemCount);
+    printSolution(result, gemCount, testCase.name.replace(/[^a-zA-Z0-9]/g, '_'));
 
     printCentered(`Execution time: ${(endTime - startTime).toFixed(2)}ms`);
 
@@ -742,6 +781,7 @@ function printComplexityAnalysis() {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const readline = require('readline');
+const fs = require('fs');
 
 function createReadlineInterface() {
   return readline.createInterface({
@@ -843,7 +883,7 @@ function interactiveDemo() {
 
   // Count gems in puzzle
   const gemCount = (customPuzzle.join('').match(/G/g) || []).length;
-  printSolution(result, gemCount);
+  printSolution(result, gemCount, 'demo');
   printCentered(`Execution time: ${(endTime - startTime).toFixed(2)}ms`);
 }
 
@@ -870,7 +910,7 @@ function runSingleTest(rl, callback) {
       const endTime = performance.now();
 
       const gemCount = (testCase.grid.join('').match(/G/g) || []).length;
-      printSolution(result, gemCount);
+      printSolution(result, gemCount, testCase.name.replace(/[^a-zA-Z0-9]/g, '_'));
       printCentered(`Execution time: ${(endTime - startTime).toFixed(2)}ms`);
 
       if (testCase.expected.minTime !== 'calculate') {
@@ -921,7 +961,7 @@ function createCustomPuzzle(rl, callback) {
           const endTime = performance.now();
 
           const gemCount = (grid.join('').match(/G/g) || []).length;
-          printSolution(result, gemCount);
+          printSolution(result, gemCount, 'custom_puzzle');
           printCentered(`Execution time: ${(endTime - startTime).toFixed(2)}ms`);
         } else {
           printCentered('No puzzle entered.');
