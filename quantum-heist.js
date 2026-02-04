@@ -938,6 +938,174 @@ function printComplexityAnalysis() {
 const readline = require('readline');
 const fs = require('fs');
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// ASCII ANIMATION MODULE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Sleep function for animation delays
+ */
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Clear console and move cursor to top
+ */
+function clearScreen() {
+  process.stdout.write('\x1B[2J\x1B[0f');
+}
+
+/**
+ * Animate the path through the grid
+ */
+async function animatePath(grid, path, pathType = 'best') {
+  const gridState = grid.map(row => row.split(''));
+  const rows = gridState.length;
+  const cols = gridState[0].length;
+
+  // Find start position
+  let playerR = 0, playerC = 0;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (gridState[r][c] === 'S') {
+        playerR = r;
+        playerC = c;
+      }
+    }
+  }
+
+  // Track collected items
+  let gemsCollected = 0;
+  let keysCollected = 0;
+  let totalGems = (grid.join('').match(/G/g) || []).length;
+
+  // Animation speed (ms per frame)
+  const frameDelay = 150;
+
+  // Initial frame
+  clearScreen();
+  printAnimationFrame(gridState, playerR, playerC, 0, path.length, gemsCollected, totalGems, keysCollected, pathType, 'Starting...');
+  await sleep(1000);
+
+  // Animate each step
+  for (let step = 0; step < path.length; step++) {
+    const action = path[step];
+
+    // Parse the action to get new position
+    let newR = playerR, newC = playerC;
+    let actionDesc = action;
+
+    if (action.includes('Move UP')) {
+      newR = playerR - 1;
+    } else if (action.includes('Move DOWN')) {
+      newR = playerR + 1;
+    } else if (action.includes('Move LEFT')) {
+      newC = playerC - 1;
+    } else if (action.includes('Move RIGHT')) {
+      newC = playerC + 1;
+    } else if (action.includes('PORTAL')) {
+      // Extract portal destination
+      const match = action.match(/\((\d+),(\d+)\)/);
+      if (match) {
+        newR = parseInt(match[1]);
+        newC = parseInt(match[2]);
+      }
+      actionDesc = '🌀 TELEPORTING...';
+    } else if (action.includes('TIME RIFT')) {
+      actionDesc = '⏪ TIME REWIND!';
+    }
+
+    // Check what's at the new position
+    const cellContent = gridState[newR][newC];
+    if (cellContent === 'G') {
+      gemsCollected++;
+      gridState[newR][newC] = '.';
+      actionDesc += ' [+GEM]';
+    } else if (cellContent === 'K') {
+      keysCollected++;
+      gridState[newR][newC] = '.';
+      actionDesc += ' [+KEY]';
+    }
+
+    // Update player position
+    playerR = newR;
+    playerC = newC;
+
+    // Render frame
+    clearScreen();
+    printAnimationFrame(gridState, playerR, playerC, step + 1, path.length, gemsCollected, totalGems, keysCollected, pathType, actionDesc);
+    await sleep(frameDelay);
+  }
+
+  // Final frame
+  clearScreen();
+  printAnimationFrame(gridState, playerR, playerC, path.length, path.length, gemsCollected, totalGems, keysCollected, pathType, '🎉 COMPLETE!');
+  await sleep(2000);
+}
+
+/**
+ * Print a single animation frame
+ */
+function printAnimationFrame(gridState, playerR, playerC, currentStep, totalSteps, gems, totalGems, keys, pathType, action) {
+  const width = 60;
+  const border = '+' + '='.repeat(width - 2) + '+';
+
+  console.log('');
+  console.log(centerTextSimple(border, 80));
+  console.log(centerTextSimple(`|  CHALLENGE 2 - ${pathType.toUpperCase()} PATH SIMULATION`.padEnd(width - 2) + '|', 80));
+  console.log(centerTextSimple(border, 80));
+  console.log('');
+
+  // Render grid with player
+  for (let r = 0; r < gridState.length; r++) {
+    let rowStr = '  ';
+    for (let c = 0; c < gridState[r].length; c++) {
+      if (r === playerR && c === playerC) {
+        rowStr += '@ ';  // Player character
+      } else {
+        const cell = gridState[r][c];
+        switch (cell) {
+          case '#': rowStr += '# '; break;
+          case '.': rowStr += '. '; break;
+          case 'S': rowStr += 'S '; break;
+          case 'E': rowStr += 'E '; break;
+          case 'G': rowStr += 'G '; break;
+          case 'K': rowStr += 'K '; break;
+          case 'D': rowStr += 'D '; break;
+          case 'P': rowStr += 'P '; break;
+          case 'L': rowStr += 'L '; break;
+          case 'T': rowStr += 'T '; break;
+          default: rowStr += cell + ' ';
+        }
+      }
+    }
+    console.log(centerTextSimple(rowStr, 80));
+  }
+
+  console.log('');
+  console.log(centerTextSimple(border, 80));
+
+  // Progress bar
+  const progress = totalSteps > 0 ? Math.floor((currentStep / totalSteps) * 20) : 0;
+  const progressBar = '[' + '█'.repeat(progress) + '░'.repeat(20 - progress) + ']';
+
+  console.log(centerTextSimple(`|  Step: ${currentStep}/${totalSteps}  ${progressBar}`.padEnd(width - 2) + '|', 80));
+  console.log(centerTextSimple(`|  Gems: ${gems}/${totalGems}  Keys: ${keys}`.padEnd(width - 2) + '|', 80));
+  console.log(centerTextSimple(`|  Action: ${action}`.padEnd(width - 2).substring(0, width - 2) + '|', 80));
+  console.log(centerTextSimple(border, 80));
+  console.log('');
+  console.log(centerTextSimple('@ = Player    Press Ctrl+C to stop', 80));
+}
+
+/**
+ * Simple center text helper for animation
+ */
+function centerTextSimple(text, width) {
+  const padding = Math.max(0, Math.floor((width - text.length) / 2));
+  return ' '.repeat(padding) + text;
+}
+
 function createReadlineInterface() {
   return readline.createInterface({
     input: process.stdin,
@@ -1105,22 +1273,40 @@ function showDemoMenu(rl, callback, isStandalone = false) {
   const boxWidth = 50;
   const border = '+' + '='.repeat(boxWidth - 2) + '+';
 
+  // Demo puzzle
+  const demoPuzzle = [
+    "S....P....#....",
+    "..##......#.K..",
+    "..#G#..L..#....",
+    "..#.#.....#.D..",
+    "..P.......#.G..",
+    "....###...#....",
+    "....#T#...#....",
+    "....###.P.#....",
+    "..........#....",
+    "..........#.P..",
+    "G..............",
+    "..............E"
+  ];
+
   function showMenu() {
     printCentered('');
     printCentered(border);
-    printCentered('|' + 'SELECT PATH TYPE'.padStart(Math.floor((boxWidth - 2 + 16) / 2)).padEnd(boxWidth - 2) + '|');
+    printCentered('|' + 'SELECT OPTION'.padStart(Math.floor((boxWidth - 2 + 13) / 2)).padEnd(boxWidth - 2) + '|');
     printCentered(border);
     printCentered('|' + '  [1] Best Path (Fastest)'.padEnd(boxWidth - 2) + '|');
     printCentered('|' + '  [2] Worst Path (Slowest)'.padEnd(boxWidth - 2) + '|');
     printCentered('|' + '  [3] Both Paths'.padEnd(boxWidth - 2) + '|');
-    printCentered('|' + '  [4] Back to Main Menu'.padEnd(boxWidth - 2) + '|');
+    printCentered('|' + '  [4] Animate Best Path'.padEnd(boxWidth - 2) + '|');
+    printCentered('|' + '  [5] Animate Worst Path'.padEnd(boxWidth - 2) + '|');
+    printCentered('|' + '  [6] Back to Main Menu'.padEnd(boxWidth - 2) + '|');
     if (isStandalone) {
-      printCentered('|' + '  [5] Exit'.padEnd(boxWidth - 2) + '|');
+      printCentered('|' + '  [7] Exit'.padEnd(boxWidth - 2) + '|');
     }
     printCentered(border);
 
-    const maxOption = isStandalone ? '5' : '4';
-    rl.question(`\nSelect option (1-${maxOption}): `, (answer) => {
+    const maxOption = isStandalone ? '7' : '6';
+    rl.question(`\nSelect option (1-${maxOption}): `, async (answer) => {
       switch (answer.trim()) {
         case '1':
           interactiveDemo('best');
@@ -1135,9 +1321,33 @@ function showDemoMenu(rl, callback, isStandalone = false) {
           showMenu();
           break;
         case '4':
-          callback();
+          // Animate best path
+          printCentered('');
+          printCentered('Calculating best path...');
+          const bestResult = solveQuantumHeist(demoPuzzle);
+          if (bestResult.path && bestResult.path.length > 0) {
+            await animatePath(demoPuzzle, bestResult.path, 'best');
+          } else {
+            printCentered('No path found to animate.');
+          }
+          showMenu();
           break;
         case '5':
+          // Animate worst path
+          printCentered('');
+          printCentered('Calculating worst path (this may take a moment)...');
+          const worstResult = solveWorstPath(demoPuzzle);
+          if (worstResult.path && worstResult.path.length > 0) {
+            await animatePath(demoPuzzle, worstResult.path, 'worst');
+          } else {
+            printCentered('No path found to animate.');
+          }
+          showMenu();
+          break;
+        case '6':
+          callback();
+          break;
+        case '7':
           if (isStandalone) {
             printCentered('');
             printCentered('Goodbye!');
