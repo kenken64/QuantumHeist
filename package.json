@@ -1,0 +1,30 @@
+{
+  "name": "challenge-2",
+  "version": "1.0.0",
+  "description": "Algorithm challenge using BFS, State Compression, Bit Manipulation, and Priority Queue",
+  "main": "quantum-heist.js",
+  "scripts": {
+    "start": "node quantum-heist.js",
+    "demo": "node quantum-heist.js --demo",
+    "test": "node quantum-heist.js --test",
+    "help": "node quantum-heist.js --help"
+  },
+  "bin": {
+    "quantum-heist": "./quantum-heist.js"
+  },
+  "keywords": [
+    "algorithm",
+    "puzzle",
+    "game",
+    "bfs",
+    "dijkstra",
+    "state-compression",
+    "bit-manipulation",
+    "priority-queue"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
